@@ -1636,6 +1636,9 @@ export const DataGrid = React.memo(function DataGrid({
     // Double-clicking a resize handle fits that column to its header and the
     // loaded rows (#1295). Cells are measured on a canvas with the result font,
     // so the table never reflows; the header is measured at its natural width.
+    // Double-clicking a resize handle fits that column to its header and the
+    // loaded rows (#1295). Cells are measured on a canvas, so the table never
+    // reflows; the header is measured at its natural width.
     const fitColumnToContent = useCallback(
         (index: number) => {
             // Widths include the row-number column first.
@@ -1644,17 +1647,33 @@ export const DataGrid = React.memo(function DataGrid({
             if (colName === undefined) return;
             const ctx = document.createElement('canvas').getContext('2d');
             if (!ctx) return;
-            ctx.font = `14px ${resolveResultFontFamily()}`;
+            // Cell font and padding are rem-based (text-sm, px-4) and follow the
+            // font-size setting, so read them from a rendered cell of the column
+            // instead of assuming a 16px root.
+            const headerCell = theadRowRef.current?.children[index] as HTMLElement | undefined;
+            const sampleCell =
+                tableRef.current?.querySelector<HTMLElement>(
+                    `tbody td[data-col-index="${colIndex}"]`,
+                ) ?? null;
+            const cellStyle = sampleCell ? getComputedStyle(sampleCell) : null;
+            ctx.font = cellStyle?.fontSize
+                ? `${cellStyle.fontWeight} ${cellStyle.fontSize} ${cellStyle.fontFamily}`
+                : `14px ${resolveResultFontFamily()}`;
+            const padding = cellStyle?.paddingLeft
+                ? parseFloat(cellStyle.paddingLeft) +
+                  parseFloat(cellStyle.paddingRight) +
+                  parseFloat(cellStyle.borderRightWidth || '0')
+                : FIT_COLUMN_PADDING;
             const colType = columnTypeMap?.get(colName);
             const colLength = columnLengthMap?.get(colName);
+            const nullLabel = t('dataGrid.null');
             const textWidths = mergedRows.map(
                 (row) =>
                     ctx.measureText(
-                        formatCellValue(row.rowData[colIndex], 'null', colType, colLength),
+                        formatCellValue(row.rowData[colIndex], nullLabel, colType, colLength),
                     ).width,
             );
-            const headerContent = theadRowRef.current?.children[index]?.firstElementChild as
-                HTMLElement | null | undefined;
+            const headerContent = headerCell?.firstElementChild as HTMLElement | null | undefined;
             if (headerContent) {
                 headerContent.style.width = 'max-content';
                 textWidths.push(headerContent.getBoundingClientRect().width);
@@ -1664,13 +1683,13 @@ export const DataGrid = React.memo(function DataGrid({
                 index,
                 getFitColumnWidth(
                     textWidths,
-                    FIT_COLUMN_PADDING,
+                    padding,
                     DATA_GRID_MIN_COLUMN_WIDTH,
                     DATA_GRID_MAX_COLUMN_WIDTH,
                 ),
             );
         },
-        [columns, columnTypeMap, columnLengthMap, mergedRows, resizeColumn],
+        [columns, columnTypeMap, columnLengthMap, mergedRows, resizeColumn, t],
     );
     const resizedTableWidth = getResizedTableWidth(lockedColumnWidths, columnWidths);
 
@@ -3302,6 +3321,7 @@ export const DataGrid = React.memo(function DataGrid({
                                 />
                             </tr>
                         )}
+
                         {virtualItems.map((virtualRow) => {
                             const rowIndex = virtualRow.index;
                             const row = tableRows[rowIndex];
