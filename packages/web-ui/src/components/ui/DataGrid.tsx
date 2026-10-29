@@ -55,6 +55,7 @@ import {
     ChartColumn,
     Pin,
     PinOff,
+    RotateCcw,
 } from 'lucide-react';
 import {usePlatformCapabilities} from '@/hooks/usePlatformCapabilities';
 import {getJsonViewerSessionHost} from '@/platform/secondaryWindowSessions';
@@ -145,10 +146,13 @@ import type {ResultCommands} from '@/types/commands';
 import {MemoRow, type RowCtx} from './DataGridRow';
 import {ColumnResizeHandle} from './ColumnResizeHandle';
 import {useLockedColumnResize} from '@/hooks/useLockedColumnResize';
+import {getFitColumnWidth} from '@/utils/columnResize';
+import {resolveResultFontFamily} from '@/utils/settings';
 import {JumpToColumnModal} from '@/components/modals/JumpToColumnModal';
 import {SetCellsValueModal} from '@/components/modals/SetCellsValueModal';
 import {KeybindingsContext} from '@/contexts/KeybindingsContext';
-
+/** Horizontal padding of a grid cell (px-4 on both sides) plus its 1px border. */
+const FIT_COLUMN_PADDING = 33;
 export interface DataGridCommandTarget {
     getResultCommands: () => ResultCommands;
     isEditing: () => boolean;
@@ -1629,6 +1633,45 @@ export const DataGrid = React.memo(function DataGrid({
         maxWidth: DATA_GRID_MAX_COLUMN_WIDTH,
         onResize: resizeColumn,
     });
+    // Double-clicking a resize handle fits that column to its header and the
+    // loaded rows (#1295). Cells are measured on a canvas with the result font,
+    // so the table never reflows; the header is measured at its natural width.
+    const fitColumnToContent = useCallback(
+        (index: number) => {
+            // Widths include the row-number column first.
+            const colIndex = index - 1;
+            const colName = columns[colIndex];
+            if (colName === undefined) return;
+            const ctx = document.createElement('canvas').getContext('2d');
+            if (!ctx) return;
+            ctx.font = `14px ${resolveResultFontFamily()}`;
+            const colType = columnTypeMap?.get(colName);
+            const colLength = columnLengthMap?.get(colName);
+            const textWidths = mergedRows.map(
+                (row) =>
+                    ctx.measureText(
+                        formatCellValue(row.rowData[colIndex], 'null', colType, colLength),
+                    ).width,
+            );
+            const headerContent = theadRowRef.current?.children[index]?.firstElementChild as
+                HTMLElement | null | undefined;
+            if (headerContent) {
+                headerContent.style.width = 'max-content';
+                textWidths.push(headerContent.getBoundingClientRect().width);
+                headerContent.style.width = '';
+            }
+            resizeColumn(
+                index,
+                getFitColumnWidth(
+                    textWidths,
+                    FIT_COLUMN_PADDING,
+                    DATA_GRID_MIN_COLUMN_WIDTH,
+                    DATA_GRID_MAX_COLUMN_WIDTH,
+                ),
+            );
+        },
+        [columns, columnTypeMap, columnLengthMap, mergedRows, resizeColumn],
+    );
     const resizedTableWidth = getResizedTableWidth(lockedColumnWidths, columnWidths);
 
     const handleContextMenu = useCallback(
@@ -3242,6 +3285,7 @@ export const DataGrid = React.memo(function DataGrid({
                                                 })}
                                                 onMouseDown={startResize}
                                                 onKeyDown={onResizeKeyDown}
+                                                onDoubleClick={fitColumnToContent}
                                             />
                                         )}
                                     </th>
@@ -3872,6 +3916,16 @@ export const DataGrid = React.memo(function DataGrid({
                                 icon: isFirstColumnFrozen ? PinOff : Pin,
                                 action: () => {
                                     setIsFirstColumnFrozen((frozen) => !frozen);
+                                    setHeaderContextMenu(null);
+                                },
+                            },
+                            {
+                                label: t('dataGrid.resetColumnWidths'),
+                                icon: RotateCcw,
+                                action: () => {
+                                    // Dropping the locked widths makes the grid fall back
+                                    // to the automatic layout and measure it again.
+                                    setLockedColumnWidths(null);
                                     setHeaderContextMenu(null);
                                 },
                             },
