@@ -151,6 +151,7 @@ import {resolveResultFontFamily} from '@/utils/settings';
 import {JumpToColumnModal} from '@/components/modals/JumpToColumnModal';
 import {SetCellsValueModal} from '@/components/modals/SetCellsValueModal';
 import {KeybindingsContext} from '@/contexts/KeybindingsContext';
+
 /** Horizontal padding of a grid cell (px-4 on both sides) plus its 1px border. */
 const FIT_COLUMN_PADDING = 33;
 export interface DataGridCommandTarget {
@@ -1634,9 +1635,6 @@ export const DataGrid = React.memo(function DataGrid({
         onResize: resizeColumn,
     });
     // Double-clicking a resize handle fits that column to its header and the
-    // loaded rows (#1295). Cells are measured on a canvas with the result font,
-    // so the table never reflows; the header is measured at its natural width.
-    // Double-clicking a resize handle fits that column to its header and the
     // loaded rows (#1295). Cells are measured on a canvas, so the table never
     // reflows; the header is measured at its natural width.
     const fitColumnToContent = useCallback(
@@ -1659,10 +1657,13 @@ export const DataGrid = React.memo(function DataGrid({
             ctx.font = cellStyle?.fontSize
                 ? `${cellStyle.fontWeight} ${cellStyle.fontSize} ${cellStyle.fontFamily}`
                 : `14px ${resolveResultFontFamily()}`;
-            const padding = cellStyle?.paddingLeft
-                ? parseFloat(cellStyle.paddingLeft) +
-                  parseFloat(cellStyle.paddingRight) +
-                  parseFloat(cellStyle.borderRightWidth || '0')
+            // With no rendered body cell (an empty grid), the header cell has the
+            // same rem-based padding, so it still follows the font-size setting.
+            const paddingStyle = cellStyle ?? (headerCell ? getComputedStyle(headerCell) : null);
+            const padding = paddingStyle?.paddingLeft
+                ? parseFloat(paddingStyle.paddingLeft) +
+                  parseFloat(paddingStyle.paddingRight) +
+                  parseFloat(paddingStyle.borderRightWidth || '0')
                 : FIT_COLUMN_PADDING;
             const colType = columnTypeMap?.get(colName);
             const colLength = columnLengthMap?.get(colName);
@@ -3321,7 +3322,6 @@ export const DataGrid = React.memo(function DataGrid({
                                 />
                             </tr>
                         )}
-
                         {virtualItems.map((virtualRow) => {
                             const rowIndex = virtualRow.index;
                             const row = tableRows[rowIndex];
