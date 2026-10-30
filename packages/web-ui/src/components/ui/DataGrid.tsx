@@ -1677,7 +1677,6 @@ export const DataGrid = React.memo(function DataGrid({
                 : FIT_COLUMN_PADDING;
             const colType = columnTypeMap?.get(colName);
             const colLength = columnLengthMap?.get(colName);
-            const nullLabel = t('dataGrid.null');
             const textWidths = mergedRows.map(
                 (row) =>
                     ctx.measureText(
@@ -1700,7 +1699,7 @@ export const DataGrid = React.memo(function DataGrid({
                 ),
             );
         },
-        [columns, columnTypeMap, columnLengthMap, mergedRows, resizeColumn, t],
+        [columns, columnTypeMap, columnLengthMap, mergedRows, resizeColumn, nullLabel],
     );
     const resizedTableWidth = getResizedTableWidth(lockedColumnWidths, columnWidths);
 
